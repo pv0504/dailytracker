@@ -16,28 +16,17 @@ export default function HabitTracker() {
   const [error, setError] = useState('');
 
   // Auth listener
-
-    useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-            setUser(currentUser);
-
-            if (currentUser) {
-                // User signed in → load data
-                setLoading(true);
-                loadHabitsFromFirebase(currentUser.uid);
-            } else {
-                setHabits([]);
-                setSelectedHabit(null);
-                setCurrentMonth(new Date());
-                setSyncing(false);
-                setError('');
-                setLoading(false);
-            }
-        });
-
-        return unsubscribe;
-    }, []);
-
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        loadHabitsFromFirebase(currentUser.uid);
+      } else {
+        setLoading(false);
+      }
+    });
+    return unsubscribe;
+  }, []);
 
   // Real-time sync
   useEffect(() => {
