@@ -4,12 +4,12 @@ import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 
 
 const firebaseConfig = {
-  apiKey: "AIzaSyD9unLbCBKBnGsX3zv8--Hi0gY_hFj6EQQ",
-  authDomain: "habit-tracker-dcc05.firebaseapp.com",
-  projectId: "habit-tracker-dcc05",
-  storageBucket: "habit-tracker-dcc05.firebasestorage.app",
-  messagingSenderId: "1090589002",
-  appId: "1:1090589002:web:71a06c14d1f23ec19f71b3"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 
