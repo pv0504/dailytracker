@@ -3,8 +3,6 @@ import { getFirestore } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 
 
-// Replace with YOUR Firebase config from console
-
 const firebaseConfig = {
   apiKey: "AIzaSyD9unLbCBKBnGsX3zv8--Hi0gY_hFj6EQQ",
   authDomain: "habit-tracker-dcc05.firebaseapp.com",
@@ -15,6 +13,15 @@ const firebaseConfig = {
 };
 
 
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
+
+// Initialize services
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
+
+// Optional: Force account selection every time
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+});
