@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Check, X, Flame, Trophy, Plus, Trash2, Calendar, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Check, X, Flame, Trophy, Plus, Trash2, Calendar, TrendingUp, ChevronLeft, ChevronRight, LogOut, User } from 'lucide-react';
+import { db, auth, googleProvider } from './firebase';
+import { doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { signInWithPopup, onAuthStateChanged } from 'firebase/auth';
 
 export default function HabitTracker() {
   const [habits, setHabits] = useState([]);
@@ -8,50 +11,131 @@ export default function HabitTracker() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedHabit, setSelectedHabit] = useState(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [user, setUser] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState('');
 
+  // Auth listener
   useEffect(() => {
-    loadHabits();
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        loadHabitsFromFirebase(currentUser.uid);
+      } else {
+        setLoading(false);
+      }
+    });
+    return unsubscribe;
   }, []);
 
-  const loadHabits = () => {
+  // Real-time sync
+  useEffect(() => {
+    if (!user) return;
+
+    const unsubscribe = onSnapshot(
+      doc(db, 'users', user.uid),
+      (doc) => {
+        if (doc.exists()) {
+          const data = doc.data();
+          if (data.habits) {
+            setHabits(data.habits);
+          }
+        }
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Sync error:', error);
+        setError('Sync error. Check connection.');
+        setLoading(false);
+      }
+    );
+
+    return unsubscribe;
+  }, [user]);
+
+  const loadHabitsFromFirebase = async (uid) => {
     try {
-      const stored = localStorage.getItem('habits-data');
-      if (stored) {
-        setHabits(JSON.parse(stored));
+      const docRef = doc(db, 'users', uid);
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.habits) {
+          setHabits(data.habits);
+        }
       }
     } catch (error) {
-      console.log('No existing habits found');
+      console.error('Error loading:', error);
+      setError('Failed to load data');
     } finally {
       setLoading(false);
     }
   };
 
-  const saveHabits = (updatedHabits) => {
+  const saveHabitsToFirebase = async (updatedHabits) => {
+    if (!user) return;
+
     try {
-      localStorage.setItem('habits-data', JSON.stringify(updatedHabits));
+      setSyncing(true);
+      setError('');
+      
+      await setDoc(doc(db, 'users', user.uid), {
+        habits: updatedHabits,
+        lastUpdated: new Date().toISOString(),
+        email: user.email,
+        displayName: user.displayName
+      });
+      
       setHabits(updatedHabits);
     } catch (error) {
-      console.error('Failed to save habits:', error);
+      console.error('Save failed:', error);
+      setError('Sync failed');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setError('');
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error('Sign in error:', error);
+      if (error.code === 'auth/popup-closed-by-user') {
+        setError('Sign-in cancelled');
+      } else if (error.code === 'auth/popup-blocked') {
+        setError('Popup blocked. Allow popups.');
+      } else {
+        setError('Sign in failed. Try again.');
+      }
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await auth.signOut();
+    } catch (error) {
+      console.error('Sign out error:', error);
     }
   };
 
   const addHabit = () => {
-    if (newHabitName.trim()) {
-      const newHabit = {
-        id: Date.now(),
-        name: newHabitName.trim(),
-        completedDates: [],
-        createdAt: new Date().toISOString()
-      };
-      saveHabits([...habits, newHabit]);
-      setNewHabitName('');
-      setShowAddForm(false);
-    }
+    if (!newHabitName.trim()) return;
+    
+    const newHabit = {
+      id: Date.now(),
+      name: newHabitName.trim(),
+      completedDates: [],
+      createdAt: new Date().toISOString()
+    };
+    saveHabitsToFirebase([...habits, newHabit]);
+    setNewHabitName('');
+    setShowAddForm(false);
   };
 
   const deleteHabit = (id) => {
-    if (window.confirm('Are you sure you want to delete this habit?')) {
-      saveHabits(habits.filter(h => h.id !== id));
+    if (window.confirm('Delete this habit?')) {
+      saveHabitsToFirebase(habits.filter(h => h.id !== id));
       if (selectedHabit?.id === id) setSelectedHabit(null);
     }
   };
@@ -68,53 +152,32 @@ export default function HabitTracker() {
       }
       return habit;
     });
-    saveHabits(updatedHabits);
+    saveHabitsToFirebase(updatedHabits);
   };
 
+  // [Copy all the calculation functions from the artifact above]
   const calculateStreak = (completedDates) => {
     if (!completedDates || completedDates.length === 0) return 0;
-    
-    const sortedDates = completedDates
-      .map(d => new Date(d))
-      .sort((a, b) => b - a);
-    
+    const sortedDates = completedDates.map(d => new Date(d)).sort((a, b) => b - a);
     let streak = 0;
     let currentDate = new Date();
     currentDate.setHours(0, 0, 0, 0);
-    
     for (let date of sortedDates) {
       date.setHours(0, 0, 0, 0);
-      const diffTime = currentDate - date;
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      
-      if (diffDays === streak) {
-        streak++;
-      } else if (diffDays === streak + 1) {
-        continue;
-      } else {
-        break;
-      }
+      const diffDays = Math.floor((currentDate - date) / (1000 * 60 * 60 * 24));
+      if (diffDays === streak) streak++;
+      else if (diffDays === streak + 1) continue;
+      else break;
     }
-    
     return streak;
   };
 
   const calculateLongestStreak = (completedDates) => {
     if (!completedDates || completedDates.length === 0) return 0;
-    
-    const sortedDates = completedDates
-      .map(d => new Date(d))
-      .sort((a, b) => a - b);
-    
-    let maxStreak = 1;
-    let currentStreak = 1;
-    
+    const sortedDates = completedDates.map(d => new Date(d)).sort((a, b) => a - b);
+    let maxStreak = 1, currentStreak = 1;
     for (let i = 1; i < sortedDates.length; i++) {
-      const prevDate = sortedDates[i - 1];
-      const currDate = sortedDates[i];
-      const diffTime = currDate - prevDate;
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      
+      const diffDays = Math.floor((sortedDates[i] - sortedDates[i - 1]) / (1000 * 60 * 60 * 24));
       if (diffDays === 1) {
         currentStreak++;
         maxStreak = Math.max(maxStreak, currentStreak);
@@ -122,26 +185,22 @@ export default function HabitTracker() {
         currentStreak = 1;
       }
     }
-    
     return maxStreak;
   };
 
   const isCompletedToday = (completedDates) => {
-    const today = new Date().toDateString();
-    return completedDates && completedDates.includes(today);
+    return completedDates && completedDates.includes(new Date().toDateString());
   };
 
   const getTotalActiveStreak = () => {
-    return habits.reduce((sum, habit) => sum + calculateStreak(habit.completedDates), 0);
+    return habits.reduce((sum, h) => sum + calculateStreak(h.completedDates), 0);
   };
 
   const getCompletionRate = () => {
     if (habits.length === 0) return 0;
-    const completed = habits.filter(h => isCompletedToday(h.completedDates)).length;
-    return Math.round((completed / habits.length) * 100);
+    return Math.round((habits.filter(h => isCompletedToday(h.completedDates)).length / habits.length) * 100);
   };
 
-  // Calendar functions
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
@@ -173,12 +232,10 @@ export default function HabitTracker() {
     const days = [];
     const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
     
-    // Empty cells before first day
     for (let i = 0; i < startingDayOfWeek; i++) {
       days.push(<div key={`empty-${i}`} className="h-8 md:h-10"></div>);
     }
     
-    // Days of month
     for (let day = 1; day <= daysInMonth; day++) {
       const isCompleted = isDateCompleted(habit, day);
       const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
@@ -285,7 +342,10 @@ export default function HabitTracker() {
                 </div>
               </div>
               <button
-                onClick={() => deleteHabit(habit.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteHabit(habit.id);
+                }}
                 className="text-red-400 hover:text-red-600 transition-colors p-2"
                 title="Delete habit"
               >
@@ -312,6 +372,13 @@ export default function HabitTracker() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-4 md:p-8 pb-20">
       <div className="max-w-4xl mx-auto">
+        {/* Demo Notice */}
+        <div className="mb-4 p-3 bg-yellow-50 border-2 border-yellow-200 rounded-lg text-center">
+          <p className="text-sm text-yellow-800">
+            <strong>Demo Mode:</strong> This is a preview. For real Firebase sync, use the code in your local project.
+          </p>
+        </div>
+
         <div className="text-center mb-6">
           <div className="flex items-center justify-center gap-3 mb-2">
             <Flame className="w-10 h-10 text-orange-500" />
@@ -320,6 +387,52 @@ export default function HabitTracker() {
             </h1>
           </div>
           <p className="text-gray-600">Build consistent habits, one day at a time</p>
+          
+          <div className="mt-3 flex flex-col items-center gap-2">
+            {!user ? (
+              <button
+                onClick={handleGoogleSignIn}
+                className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all shadow-sm font-medium"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                Sign in with Google (Demo)
+              </button>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-lg shadow-sm">
+                  <User className="w-5 h-5 text-indigo-500" />
+                  <div className="text-left">
+                    <div className="text-sm font-semibold text-gray-800">
+                      {user.displayName}
+                    </div>
+                    <div className="text-xs text-gray-500">{user.email}</div>
+                  </div>
+                  <div className="flex items-center gap-2 ml-2">
+                    <div className={`w-2 h-2 rounded-full ${syncing ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'}`}></div>
+                    <span className="text-xs text-gray-600">{syncing ? 'Syncing...' : 'Synced'}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={handleSignOut}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </button>
+              </div>
+            )}
+            
+            {error && (
+              <div className="mt-2 px-4 py-2 bg-red-50 text-red-700 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+          </div>
         </div>
 
         {habits.length > 0 && (
@@ -385,6 +498,11 @@ export default function HabitTracker() {
             <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-700 mb-2">No habits yet</h3>
             <p className="text-gray-500">Click "Add New Habit" to start your journey!</p>
+            {!user && (
+              <p className="text-sm text-indigo-600 mt-3">
+                💡 Sign in to sync across all your devices
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
@@ -442,7 +560,7 @@ export default function HabitTracker() {
         )}
 
         <div className="text-center mt-8 text-gray-500 text-sm">
-          <p>Data saved locally in your browser</p>
+          <p>{user ? `Demo: Synced as ${user.email}` : 'Sign in to sync across devices'}</p>
         </div>
       </div>
     </div>
