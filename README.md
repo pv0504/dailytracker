@@ -45,15 +45,12 @@ Open `http://localhost:5173` and you're good to go.
 
 Got frustrated with existing habit trackers. They're either too simple (just checkboxes) or way too complex (badges, levels, social features, premium tiers). I wanted something in between - functional but not overwhelming.
 
-Also wanted to learn React better. Two birds, one stone.
+Also wanted something I could deploy once and forget about - no backend, no database, just works.
 
 ## Contributing
 
 Found a bug? Got an idea? Feel free to open an issue or submit a PR. I'm open to suggestions but want to keep this thing lean.
 
-## License
-
-MIT - do whatever you want with it.
 
 ---
 
