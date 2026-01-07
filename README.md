@@ -2,7 +2,7 @@
 
 A clean, minimal habit tracker that actually stays out of your way. Built because I got tired of bloated habit apps with features I never use.
 
-**Live:** [dailytracker-self.vercel.app](https://dailytracker-self.vercel.app)
+**Live:** [dailytracker-self.vercel.app](https://dailytracker-three.vercel.app)
 
 ## What it does
 
